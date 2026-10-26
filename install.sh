@@ -9,6 +9,7 @@ if [[ ${EUID} -ne 0 ]]; then echo '请使用 root 执行安装。' >&2; exit 1; 
 if [[ $(uname -m) != x86_64 ]]; then echo '主控一键安装目前支持 Linux x86_64。' >&2; exit 1; fi
 if [[ ! $version =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo '版本号格式错误。' >&2; exit 1; fi
 if ! command -v apt-get >/dev/null; then echo '主控一键安装支持 Debian 12/13、Ubuntu 22.04/24.04。' >&2; exit 1; fi
+if [[ ! -d /mnt/youlin-data ]]; then install -d -m 755 /mnt/youlin-data; fi
 mkdir -p "$installer_root/cache" "$installer_root/tmp" "$installer_root/apt-cache" "$installer_root/apt-lists/partial"
 export TMPDIR="$installer_root/tmp" DEBIAN_FRONTEND=noninteractive
 if ! command -v python3 >/dev/null || ! command -v curl >/dev/null; then

@@ -308,7 +308,9 @@ def install(args):
         for port in (80, 443): free_port(port)
     if args.preflight:
         print(json.dumps({'domain': domain, 'platform': release['ID'] + ' ' + release['VERSION_ID'], 'data': str(DATA), 'existing_installation': STATE.exists()}, ensure_ascii=False)); return
+    new_data_root = not DATA.exists()
     DATA.mkdir(parents=True, exist_ok=True)
+    if new_data_root: DATA.chmod(0o755)
     if not DATA.stat().st_mode & 0o001: raise RuntimeError('数据目录须允许服务用户穿越（目录执行权限）')
     RUNTIME.mkdir(exist_ok=True); RUNTIME.chmod(0o711)
     INSTALL.mkdir(exist_ok=True); INSTALL.chmod(0o700)
