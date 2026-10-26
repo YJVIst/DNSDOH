@@ -2,6 +2,11 @@
 """Safety checks for an installer that writes system configuration; no host mutations."""
 import importlib.util
 import os
+import hashlib
+import io
+import subprocess
+import sys
+import tarfile
 from pathlib import Path
 import tempfile
 import unittest
@@ -53,6 +58,34 @@ class Installer(unittest.TestCase):
             self.assertIn('access_log off;', config)
             self.assertNotIn('/gateway/', config)
         self.assertIn('ssl_protocols TLSv1.2 TLSv1.3;', i.http_config('admin.example.com', True))
+
+    def bootstrap_extract(self, directory, member, content=b'payload', bad_checksum=False):
+        directory = Path(directory)
+        bundle = directory / 'bundle.tar.gz'
+        with tarfile.open(bundle, 'w:gz') as archive:
+            archive.addfile(member, io.BytesIO(content) if member.isfile() else None)
+        checksums = directory / 'SHA256SUMS'
+        digest = '0' * 64 if bad_checksum else hashlib.sha256(bundle.read_bytes()).hexdigest()
+        checksums.write_text(digest + '  bundle.tar.gz\n')
+        script = (ROOT / 'install.sh').read_text().split("<<'PY'\n", 1)[1].split('\nPY', 1)[0]
+        return subprocess.run([sys.executable, '-c', script, str(bundle), str(checksums), str(directory / 'out')], capture_output=True)
+
+    def test_bootstrap_extracts_verified_regular_files(self):
+        with tempfile.TemporaryDirectory(dir=os.environ.get('DNSDOH_TEST_TMP', '/mnt/youlin-data/tmp')) as d:
+            member = tarfile.TarInfo('DNSDOH/agent/dnsdoh'); member.size = 7; member.mode = 0o755
+            self.assertEqual(self.bootstrap_extract(d, member).returncode, 0)
+            self.assertEqual((Path(d) / 'out/DNSDOH/agent/dnsdoh').read_bytes(), b'payload')
+
+    def test_bootstrap_rejects_unverified_paths_and_links(self):
+        for case in ['checksum', 'traversal', 'symlink', 'hardlink']:
+            with self.subTest(case=case), tempfile.TemporaryDirectory(dir=os.environ.get('DNSDOH_TEST_TMP', '/mnt/youlin-data/tmp')) as d:
+                member = tarfile.TarInfo('DNSDOH/agent/dnsdoh'); member.size = 7
+                if case == 'traversal': member.name = 'DNSDOH/../../escape'
+                if case in ['symlink', 'hardlink']:
+                    member.type = tarfile.SYMTYPE if case == 'symlink' else tarfile.LNKTYPE
+                    member.linkname = '/etc/passwd'; member.size = 0
+                self.assertNotEqual(self.bootstrap_extract(d, member, bad_checksum=case == 'checksum').returncode, 0)
+                self.assertFalse((Path(d) / 'out').exists())
 
     def test_supported_main_platforms_are_explicit(self):
         for name, version in [('debian','12'),('debian','13'),('ubuntu','22.04'),('ubuntu','24.04')]: self.assertTrue(i.supported_os({'ID':name,'VERSION_ID':version}))

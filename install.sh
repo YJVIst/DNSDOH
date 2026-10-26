@@ -2,7 +2,7 @@
 # DNSDOH controller bootstrap. All downloads and temporary data stay on the data disk.
 set -euo pipefail
 umask 077
-version="${DNSDOH_VERSION:-v0.3.1}"
+version="${DNSDOH_VERSION:-v0.3.2}"
 repository="YJVIst/DNSDOH"
 installer_root=/mnt/youlin-data/installer
 if [[ ${EUID} -ne 0 ]]; then echo '请使用 root 执行安装。' >&2; exit 1; fi

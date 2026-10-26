@@ -12,7 +12,7 @@ with tarfile.open(out/'DNSDOH-source.tar.gz','w:gz') as archive:
     for item in sorted(set(files)):
         if item:
             rel=Path(item.decode());archive.add(root/rel,arcname=Path('DNSDOH')/rel,recursive=False)
-with tarfile.open(out/'DNSDOH-linux-amd64.tar.gz','w:gz') as archive:
+with tarfile.open(out/'DNSDOH-linux-amd64.tar.gz','w:gz',dereference=True) as archive:
     archive.add(root/'target-musl/x86_64-unknown-linux-musl/release/dnsdoh',arcname='DNSDOH/target/release/dnsdoh')
     archive.add(root/'target-musl/x86_64-unknown-linux-musl/release/dnsdoh',arcname='DNSDOH/agent/dnsdoh')
     for name in ['README.md','LICENSE','docs/DEPLOYMENT.md','docs/NODES.md','docs/API.md','deploy/controller.env.example','deploy/node.env.example','deploy/nginx.conf','deploy/dnsdoh@.service','deploy/dnsdoh-domain-maintain.service','deploy/dnsdoh-domain-maintain.timer','scripts/install-controller-maintenance.py','scripts/install-node.py','scripts/build-agent.sh','scripts/backup.py','scripts/install-controller.py','install.sh']:
