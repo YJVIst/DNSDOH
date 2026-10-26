@@ -8,4 +8,3 @@
 - Cloudflare credentials are authorized for DNSDOH tests and deployment; never persist them in the repository or print them. Read existing DNS records before changing only dedicated DNSDOH names. Do not overwrite unrelated records.
 - Test against real MariaDB, real DNS wire messages, two node processes, and the actual dashboard. Record limits honestly: two local node processes are not multi-region validation.
 - Document bounded token revocation propagation and DNS cache effects. Never claim a DNS token revokes already established node/proxy connections.
-
