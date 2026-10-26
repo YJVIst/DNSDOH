@@ -1,0 +1,8 @@
+[Unit]
+Description=Refresh DNSDOH controller domain bindings
+[Timer]
+OnBootSec=10s
+OnUnitActiveSec=10s
+AccuracySec=1s
+[Install]
+WantedBy=timers.target

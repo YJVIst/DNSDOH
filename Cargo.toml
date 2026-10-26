@@ -1,0 +1,48 @@
+[package]
+name = "dnsdoh"
+version = "0.3.1"
+edition = "2024"
+license = "MIT"
+description = "Private DNS over HTTPS with per-user tokens and a MariaDB control plane"
+
+[dependencies]
+anyhow = "1"
+aes-gcm = "0.10"
+x509-parser = "0.18"
+hmac = "0.12"
+sha1 = "0.10"
+instant-acme = { version = "0.8", default-features = false, features = ["hyper-rustls", "ring", "rcgen"] }
+russh = { version = "0.54", default-features = false, features = ["ring"] }
+argon2 = "0.5"
+axum = { version = "0.8", features = ["macros"] }
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+hex = "0.4"
+hickory-proto = "0.26"
+http = "1"
+mime_guess = "2"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rust-embed = { version = "8", features = ["include-exclude"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "mysql", "chrono", "migrate", "macros"] }
+subtle = "2"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["limit", "set-header"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[profile.release]
+lto = "thin"
+strip = true
+

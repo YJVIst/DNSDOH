@@ -1,0 +1,11 @@
+[Unit]
+Description=Renew DNSDOH HTTPS certificates
+After=network-online.target nginx.service
+Wants=network-online.target
+RequiresMountsFor=/mnt/youlin-data
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/certbot renew --quiet --cert-name dnsdoh --config-dir /mnt/youlin-data/runtime/letsencrypt --work-dir /mnt/youlin-data/runtime/certbot-work --logs-dir /mnt/youlin-data/runtime/certbot-logs --deploy-hook /mnt/youlin-data/DNSDOH/scripts/reload-nginx.sh
+StandardOutput=append:/mnt/youlin-data/runtime/cert-renew.log
+StandardError=append:/mnt/youlin-data/runtime/cert-renew.log

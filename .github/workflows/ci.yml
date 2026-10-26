@@ -1,0 +1,52 @@
+name: DNSDOH checks
+on:
+  push:
+  pull_request:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.8
+        env:
+          MARIADB_DATABASE: dnsdoh_test
+          MARIADB_USER: dnsdoh_test
+          MARIADB_PASSWORD: ci-test-database-only
+          MARIADB_ROOT_PASSWORD: ci-root-test-only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: npm ci --no-audit --no-fund && npm run build
+        working-directory: web
+      - run: cargo fmt --check && cargo test --locked && cargo build --locked
+      - run: sudo apt-get update && sudo apt-get install -y mariadb-client python3-cryptography
+      - name: Prepare isolated integration database configuration
+        shell: python
+        run: |
+          import os, pathlib, secrets
+          temp = pathlib.Path(os.environ['RUNNER_TEMP'])
+          config = temp / 'dnsdoh-test.env'
+          config.write_text('\n'.join([
+            'DATABASE_URL=mysql://dnsdoh_test:ci-test-database-only@127.0.0.1:3306/dnsdoh_test',
+            'DNSDOH_ADMIN_USERNAME=admin',
+            'DNSDOH_ADMIN_PASSWORD=' + secrets.token_urlsafe(24),
+          ]) + '\n')
+          config.chmod(0o600)
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+            f.write(f'DNSDOH_TEST_ENV={config}\nDNSDOH_TEST_RUNTIME={temp}/integration\n')
+      - run: /usr/bin/python3 tests/installer.py
+        env:
+          DNSDOH_TEST_TMP: ${{ runner.temp }}
+      - run: /usr/bin/python3 tests/integration.py

@@ -1,0 +1,33 @@
+[Unit]
+Description=DNSDOH instance %i
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/mnt/youlin-data
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=dnsdoh
+Group=dnsdoh
+EnvironmentFile=/mnt/youlin-data/runtime/%i.env
+ExecStart=/mnt/youlin-data/DNSDOH/target/release/dnsdoh serve
+WorkingDirectory=/mnt/youlin-data/DNSDOH
+Restart=on-failure
+RestartSec=3
+StandardOutput=append:/mnt/youlin-data/runtime/%i.log
+StandardError=append:/mnt/youlin-data/runtime/%i.log
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
