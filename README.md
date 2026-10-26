@@ -30,6 +30,23 @@ cat /mnt/youlin-data/runtime/管理员登录信息.txt
 
 **填写域名无法代替 DNS 供应商授权。** 一键脚本完成管理主控安装；首次登录后，在强制向导中填写自己的 DNS API 凭据、选择主域名和 DoH 标签。随后系统自动申请统一 DoH 证书、配置解析并接入节点。项目不附带任何供应商令牌或预置管理员密码。
 
+## 二进制与源码下载
+
+[GitHub Releases](https://github.com/YJVIst/DNSDOH/releases/latest) 同时提供：
+
+| 文件 | 用途 |
+| --- | --- |
+| `dnsdoh-controller-linux-amd64` | 已编译的静态主控程序 |
+| `dnsdoh-agent-linux-amd64` | 已编译的静态节点程序 |
+| `DNSDOH-linux-amd64.tar.gz` | 主控、agent、安装脚本和部署文档完整包 |
+| `DNSDOH-source.tar.gz` | 公开源码与构建脚本 |
+| `DNSDOH-install.sh` | 默认下载二进制的一键安装脚本 |
+| `SHA256SUMS` | 所有下载文件的校验值 |
+
+**一键安装和后台 SSH 节点部署都直接使用二进制，不会在目标服务器编译。** 低配置服务器无需 Rust / Node.js。主控和 agent 共享同一个 Rust 程序，通过运行模式区分，因此两个独立下载文件的校验值相同。
+
+需要自行构建时，见 [源码构建及手动部署教程](docs/BUILD.md)，包含单任务构建参数、静态二进制构建、离线传包部署和人工维护步骤。
+
 ## 主要功能
 
 - RFC 8484 GET / POST，A / AAAA / SOA，NXDOMAIN / NODATA / REFUSED；私有查询不递归回退公共 DNS。
@@ -77,6 +94,7 @@ CI 使用真实 MariaDB 进行集成测试。部署验收还覆盖两台服务�
 
 Cloudflare 已用真实账户验证；阿里云 DNS / DNSPod 经过独立签名与记录生命周期协议测试。主控安装器完整实机验收见 [测试范围](docs/ACCEPTANCE.md)。节点支持多个 Linux 包管理器；除实测平台外，不将静态运行检查等同于完整安装验证。
 
+- [源码构建与手动部署](docs/BUILD.md)
 - [一键安装与运维](docs/DEPLOYMENT.md)
 - [节点、连接安全及域名迁移](docs/NODES.md)
 - [HTTP API](docs/API.md)
