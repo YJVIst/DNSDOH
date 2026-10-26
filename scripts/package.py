@@ -25,12 +25,14 @@ with tarfile.open(out/'DNSDOH-source.tar.gz','w:gz') as archive:
 with tarfile.open(out/'DNSDOH-linux-amd64.tar.gz','w:gz',dereference=True) as archive:
     archive.add(root/'target-musl/x86_64-unknown-linux-musl/release/dnsdoh',arcname='DNSDOH/target/release/dnsdoh')
     archive.add(root/'target-musl/x86_64-unknown-linux-musl/release/dnsdoh',arcname='DNSDOH/agent/dnsdoh')
-    for name in ['README.md','LICENSE','docs/DEPLOYMENT.md','docs/BUILD.md','docs/NODES.md','docs/API.md','deploy/controller.env.example','deploy/node.env.example','deploy/nginx.conf','deploy/dnsdoh@.service','deploy/dnsdoh-domain-maintain.service','deploy/dnsdoh-domain-maintain.timer','scripts/install-controller-maintenance.py','scripts/install-node.py','scripts/build-agent.sh','scripts/backup.py','scripts/install-controller.py','install.sh']:
+    for name in ['README.md','LICENSE','docs/DEPLOYMENT.md','docs/BUILD.md','docs/NODES.md','docs/API.md','docs/COMPATIBILITY.md','templates','deploy/controller.env.example','deploy/node.env.example','deploy/nginx.conf','deploy/dnsdoh@.service','deploy/dnsdoh-domain-maintain.service','deploy/dnsdoh-domain-maintain.timer','scripts/install-controller-maintenance.py','scripts/install-node.py','scripts/build-agent.sh','scripts/backup.py','scripts/install-controller.py','install.sh']:
         archive.add(root/name,arcname='DNSDOH/'+name)
+with tarfile.open(out/'DNSDOH-xboard-templates.tar.gz','w:gz') as archive:
+    archive.add(root/'templates/xboard',arcname='DNSDOH/templates/xboard')
 static = root/'target-musl/x86_64-unknown-linux-musl/release/dnsdoh'
 for name in ['dnsdoh-controller-linux-amd64','dnsdoh-agent-linux-amd64']:
     shutil.copy2(static,out/name)
     (out/name).chmod(0o755)
 shutil.copy2(root/'install.sh',out/'DNSDOH-install.sh')
-(out/'SHA256SUMS').write_text(''.join(hashlib.sha256((out/name).read_bytes()).hexdigest()+'  '+name+'\n' for name in ['DNSDOH-source.tar.gz','DNSDOH-linux-amd64.tar.gz','DNSDOH-install.sh','dnsdoh-controller-linux-amd64','dnsdoh-agent-linux-amd64']))
+(out/'SHA256SUMS').write_text(''.join(hashlib.sha256((out/name).read_bytes()).hexdigest()+'  '+name+'\n' for name in ['DNSDOH-source.tar.gz','DNSDOH-linux-amd64.tar.gz','DNSDOH-xboard-templates.tar.gz','DNSDOH-install.sh','dnsdoh-controller-linux-amd64','dnsdoh-agent-linux-amd64']))
 print('Source and Linux x86_64 archives created with SHA256SUMS')

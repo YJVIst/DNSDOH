@@ -287,7 +287,8 @@ fn router(app: App, controller: bool) -> Router {
     let mut router = Router::new()
         .route("/healthz", get(|| async { Json(json!({"status":"ok"})) }))
         .route("/readyz", get(ready))
-        .route("/dns-query/{token}", get(dns::get).post(dns::post));
+        .route("/dns-query/{token}", get(dns::get).post(dns::post))
+        .route("/dns-query/compat/{token}", get(dns::get).post(dns::post));
     if controller {
         router = router
             .route("/install/node.py", get(enrollment::script))

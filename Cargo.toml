@@ -1,6 +1,6 @@
 [package]
 name = "dnsdoh"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2024"
 license = "MIT"
 description = "Private DNS over HTTPS with per-user tokens and a MariaDB control plane"

@@ -5,7 +5,7 @@ use crate::{
 };
 use axum::{
     body::Bytes,
-    extract::{ConnectInfo, Path, RawQuery, State},
+    extract::{ConnectInfo, OriginalUri, Path, RawQuery, State},
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
@@ -155,6 +155,18 @@ pub fn prepare(
     peer: SocketAddr,
     headers: &HeaderMap,
 ) -> Result<(i64, Vec<u8>, bool), ApiError> {
+    prepare_mode(app, token, bytes, peer, headers, false)
+        .map(|(revision, wire, success, _)| (revision, wire, success))
+}
+
+fn prepare_mode(
+    app: &App,
+    token: &str,
+    bytes: &[u8],
+    peer: SocketAddr,
+    headers: &HeaderMap,
+    compatible: bool,
+) -> Result<(i64, Vec<u8>, bool, Option<Vec<u8>>), ApiError> {
     let client = crate::auth::client_ip(app, peer, headers);
     if !app.allow(format!("dns-ip:{client}"), 600, Duration::from_secs(1)) {
         return Err(ApiError::new(
@@ -192,22 +204,40 @@ pub fn prepare(
         ));
     }
     let result = answer(&snapshot, credential, bytes)?;
-    Ok((snapshot.revision, result.0, result.1))
+    let forward = if compatible {
+        public_query(&snapshot, bytes)?
+    } else {
+        None
+    };
+    Ok((snapshot.revision, result.0, result.1, forward))
 }
-fn process(
+async fn process(
     app: &App,
     token: &str,
     bytes: &[u8],
     peer: SocketAddr,
     headers: &HeaderMap,
+    compatible: bool,
 ) -> Response {
     let started = Instant::now();
-    let result =
-        prepare(app, token, bytes, peer, headers).map(|(_, wire, success)| (wire, success));
+    let result = match prepare_mode(app, token, bytes, peer, headers, compatible) {
+        Ok((_, wire, success, None)) => Ok((wire, success)),
+        Ok((_, _, _, Some(query))) => forward_public(app, &query).await.map(|wire| {
+            let success = matches!(wire[3] & 15, 0 | 3);
+            (wire, success)
+        }),
+        Err(error) => Err(error),
+    };
     match result {
         Ok((wire, success)) => {
             app.count(
-                if success { "success" } else { "denied" },
+                if success {
+                    "success"
+                } else if wire[3] & 15 == 2 {
+                    "error"
+                } else {
+                    "denied"
+                },
                 started.elapsed(),
             );
             (
@@ -244,6 +274,7 @@ pub async fn get(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Path(token): Path<String>,
     RawQuery(query): RawQuery,
+    OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
 ) -> Response {
     let raw = query.unwrap_or_default();
@@ -260,7 +291,17 @@ pub async fn get(
         return ApiError::bad("A single dns query parameter is required").into_response();
     }
     match URL_SAFE_NO_PAD.decode(values[0]) {
-        Ok(bytes) => process(&app, &token, &bytes, peer, &headers),
+        Ok(bytes) => {
+            process(
+                &app,
+                &token,
+                &bytes,
+                peer,
+                &headers,
+                uri.path().starts_with("/dns-query/compat/"),
+            )
+            .await
+        }
         Err(_) => ApiError::bad("Invalid DNS query encoding").into_response(),
     }
 }
@@ -269,6 +310,7 @@ pub async fn post(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Path(token): Path<String>,
     headers: HeaderMap,
+    OriginalUri(uri): OriginalUri,
     body: Bytes,
 ) -> Response {
     if headers
@@ -283,7 +325,124 @@ pub async fn post(
         )
         .into_response();
     }
-    process(&app, &token, &body, peer, &headers)
+    process(
+        &app,
+        &token,
+        &body,
+        peer,
+        &headers,
+        uri.path().starts_with("/dns-query/compat/"),
+    )
+    .await
+}
+
+// Called only after token validation and the normal strict DNS parser. Never fall
+// back for a known private zone, including a disabled or unauthorized zone.
+fn public_query(snapshot: &Snapshot, wire: &[u8]) -> Result<Option<Vec<u8>>, ApiError> {
+    let Some(zones) = &snapshot.private_zones else {
+        return Ok(None);
+    };
+    let query = Message::from_vec(wire).map_err(|_| ApiError::bad("Invalid DNS message"))?;
+    if query.queries.len() != 1
+        || query.metadata.op_code != OpCode::Query
+        || query.metadata.message_type != MessageType::Query
+        || query.edns.as_ref().is_some_and(|e| e.version() != 0)
+    {
+        return Ok(None);
+    }
+    let q = &query.queries[0];
+    let name = q.name().to_ascii().trim_end_matches('.').to_lowercase();
+    if q.query_class() != DNSClass::IN
+        || matches!(
+            q.query_type(),
+            RecordType::AXFR | RecordType::IXFR | RecordType::ANY
+        )
+        || zones.iter().any(|z| security::inside(&name, z))
+        || snapshot
+            .zones
+            .iter()
+            .any(|z| security::inside(&name, &z.name))
+    {
+        return Ok(None);
+    }
+    // Rebuild the query: no ECS, cookies, extra records, or client-supplied headers.
+    let mut clean = Message::query();
+    clean.metadata.id = query.metadata.id;
+    clean.metadata.recursion_desired = true;
+    clean.queries = query.queries;
+    clean
+        .to_vec()
+        .map(Some)
+        .map_err(|_| ApiError::bad("DNS encoding failed"))
+}
+
+async fn forward_public(app: &App, query: &[u8]) -> Result<Vec<u8>, ApiError> {
+    let request = Message::from_vec(query).map_err(|_| ApiError::bad("Invalid DNS message"))?;
+    // Fixed HTTPS upstreams; tokens and client IP headers are never forwarded.
+    for upstream in ["https://1.1.1.1/dns-query", "https://223.5.5.5/dns-query"] {
+        let Ok(mut response) = app
+            .0
+            .http
+            .post(upstream)
+            .header(header::CONTENT_TYPE, "application/dns-message")
+            .header(header::ACCEPT, "application/dns-message")
+            .body(query.to_vec())
+            .send()
+            .await
+        else {
+            continue;
+        };
+        if !response.status().is_success()
+            || response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|h| h.to_str().ok())
+                .and_then(|s| s.split(';').next())
+                != Some("application/dns-message")
+        {
+            continue;
+        }
+        let mut wire = Vec::new();
+        let mut complete = true;
+        loop {
+            match response.chunk().await {
+                Ok(Some(chunk)) if wire.len() + chunk.len() <= 65535 => {
+                    wire.extend_from_slice(&chunk)
+                }
+                Ok(None) => break,
+                _ => {
+                    complete = false;
+                    break;
+                }
+            }
+        }
+        if !complete {
+            continue;
+        }
+        let Ok(answer) = Message::from_vec(&wire) else {
+            continue;
+        };
+        if answer.metadata.message_type == MessageType::Response
+            && answer.metadata.id == request.metadata.id
+            && answer.metadata.op_code == OpCode::Query
+            && answer.queries == request.queries
+            && matches!(
+                answer.metadata.response_code,
+                ResponseCode::NoError | ResponseCode::NXDomain
+            )
+        {
+            return Ok(wire);
+        }
+    }
+    // Fail closed; do not ask the client's public DNS as a fallback.
+    let mut failure = Message::response(request.metadata.id, OpCode::Query);
+    failure.queries = request.queries;
+    failure.metadata.recursion_desired = true;
+    failure.metadata.recursion_available = true;
+    failure.metadata.response_code = ResponseCode::ServFail;
+    failure
+        .to_vec()
+        .map_err(|_| ApiError::bad("DNS encoding failed"))
 }
 
 #[cfg(test)]
@@ -295,6 +454,10 @@ mod tests {
     fn fixture() -> (Snapshot, Credential) {
         (
             Snapshot {
+                private_zones: Some(vec![
+                    "nodes.example.com".into(),
+                    "disabled.example.com".into(),
+                ]),
                 revision: 1,
                 token_qps: 30,
                 zones: vec![Zone {
@@ -322,6 +485,33 @@ mod tests {
         let mut m = Message::query();
         m.add_query(Query::query(Name::from_utf8(name).unwrap(), kind));
         m.to_vec().unwrap()
+    }
+    #[test]
+    fn compatibility_never_forwards_private_or_unsafe_questions() {
+        let (mut s, _) = fixture();
+        for domain in [
+            "hk.nodes.example.com",
+            "missing.nodes.example.com",
+            "disabled.example.com",
+            "x.disabled.example.com",
+        ] {
+            assert!(
+                public_query(&s, &request(domain, RecordType::A))
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        for kind in [RecordType::AXFR, RecordType::IXFR, RecordType::ANY] {
+            assert!(
+                public_query(&s, &request("example.org", kind))
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        let q = request("example.org", RecordType::A);
+        assert!(public_query(&s, &q).unwrap().is_some());
+        s.private_zones = None;
+        assert!(public_query(&s, &q).unwrap().is_none());
     }
     #[test]
     fn resolution_and_negative_answers() {

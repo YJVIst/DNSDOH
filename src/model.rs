@@ -29,6 +29,9 @@ pub struct Credential {
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Snapshot {
+    /// All configured zones, including disabled zones; None means an older controller.
+    #[serde(default)]
+    pub private_zones: Option<Vec<String>>,
     pub revision: i64,
     pub token_qps: u32,
     pub zones: Vec<Zone>,

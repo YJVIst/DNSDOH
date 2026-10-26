@@ -155,9 +155,9 @@ def decode(wire):
     return {'id': ident, 'flags': flags, 'rcode': flags & 15, 'answers': an, 'authority': ns, 'records': records}
 
 
-def doh(base, token, name='hk01.nodes.example.test', kind=1, method='POST', wire=None):
+def doh(base, token, name='hk01.nodes.example.test', kind=1, method='POST', wire=None, compatible=False):
     wire = question(name, kind) if wire is None else wire
-    path = '/dns-query/' + token
+    path = ('/dns-query/compat/' if compatible else '/dns-query/') + token
     if method == 'GET':
         path += '?dns=' + base64.urlsafe_b64encode(wire).decode().rstrip('=')
         body = None
@@ -273,6 +273,27 @@ def main():
     p1 = start_node(n1, NODE1, BASE)
     p2 = start_node(n2, NODE2, 'http://127.0.0.1:19090')
     check(wait_for(lambda: doh(NODE1, token)[0] == 200 and doh(NODE2, token)[0] == 200), 'two independent node processes synchronize and answer')
+    # Compatibility routes preserve private authorization on controller and agents.
+    # These CI checks do not depend on external public DNS availability.
+    for endpoint in [BASE, NODE1, NODE2]:
+        for method in ['GET', 'POST']:
+            status, data, headers = doh(endpoint, token, method=method, compatible=True)
+            check(status == 200 and data['records'][0]['value'] == '203.0.113.10'
+                  and headers.get('cache-control') == 'no-store', 'compatibility ' + method + ' private answer on ' + endpoint)
+        check(doh(endpoint, token, 'missing.nodes.example.test', compatible=True)[1]['rcode'] == 3,
+              'compatibility private NXDOMAIN stays local on ' + endpoint)
+        check(doh(endpoint, token, 'a.restricted.example.test', compatible=True)[1]['rcode'] == 5,
+              'compatibility unauthorized private zone stays refused on ' + endpoint)
+        check(doh(endpoint, 'A' * 43, 'example.com', compatible=True)[0] == 403,
+              'compatibility authenticates before public forwarding on ' + endpoint)
+        check(doh(endpoint, token, wire=b'bad', compatible=True)[0] == 400,
+              'compatibility rejects malformed queries on ' + endpoint)
+    c.api('/zones/' + z, 'PUT', {'name': 'nodes.example.test', 'enabled': False})
+    check(wait_for(lambda: all(doh(e, token, compatible=True)[1]['rcode'] == 5 for e in [BASE, NODE1, NODE2])),
+          'disabled private zone never falls through to public DNS')
+    c.api('/zones/' + z, 'PUT', {'name': 'nodes.example.test', 'enabled': True})
+    check(wait_for(lambda: all(doh(e, token, compatible=True)[1]['rcode'] == 0 for e in [BASE, NODE1, NODE2])),
+          're-enabled private zone resumes compatibility resolution')
     # One-time enrollment, body-bound signatures and replay protection.
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, PrivateFormat, NoEncryption
@@ -343,6 +364,7 @@ def main():
     start_revoke = time.monotonic()
     c.api('/tokens/' + t['id'] + '/revoke', 'POST')
     check(wait_for(lambda: doh(NODE1, token)[0] == 403, 6), 'online node rejects revoked token after synchronization')
+    check(doh(BASE, token, 'example.com', compatible=True)[0] == 403 and doh(NODE1, token, 'example.com', compatible=True)[0] == 403, 'revoked token cannot use compatibility public forwarding')
     check(wait_for(lambda: doh(NODE2, token)[0] == 503, 16), 'disconnected node fails closed when its configuration lease expires')
     check(time.monotonic() - start_revoke < 16, 'revocation remains bounded by the 15-second node lease')
     PROXY_ENABLED.set()

@@ -38,8 +38,12 @@ pub async fn snapshot(pool: &MySqlPool) -> Result<Snapshot, sqlx::Error> {
   let a:Option<i64>=r.get("token_expiry");let b:Option<i64>=r.get("user_expiry");let expires_at=a.into_iter().chain(b).min();
   let user_id:String=r.get("user_id");credentials.insert(r.get("token_hash"),Credential{id:r.get("id"),zones:grants.get(&user_id).cloned().unwrap_or_default(),user_id,expires_at});
  }
+    let private_zones = sqlx::query_scalar::<_, String>("SELECT name FROM zones")
+        .fetch_all(&mut *tx)
+        .await?;
     tx.commit().await?;
     Ok(Snapshot {
+        private_zones: Some(private_zones),
         revision: settings.get("revision"),
         token_qps: settings.get::<i32, _>("token_qps") as u32,
         zones,

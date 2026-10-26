@@ -59,6 +59,12 @@ cat /opt/dnsdoh/runtime/管理员登录信息.txt
 - React / TypeScript 中文仪表盘、操作审计、查询统计与限速，适配手机和桌面。
 - Argon2 管理密码、可撤销 Cookie 会话、CSRF；供应商凭据和证书在 MariaDB 中使用 AES-256-GCM 加密。
 
+## 六种 XBoard 订阅模板
+
+[templates/xboard](templates/xboard/README.md) 提供 Sing-box、Clash、Clash Meta、Stash、Surge、Surfboard 六份模板。将示例 DoH 域名、私有分区、节点域名和令牌替换后，粘贴到 XBoard 对应的订阅模板栏目。源码包、完整二进制包和独立 `DNSDOH-xboard-templates.tar.gz` 均附带这些文件。
+
+模板没有真实访问密钥；不同模板建议使用独立令牌。NekoBox 普通订阅不会应用完整模板中的 DNS 配置，接入限制见模板说明。
+
 ## 用户接入
 
 后台创建私有分区（如 `nodes.example.com`），添加实际节点 IP；创建用户、授权分区并签发完整地址：
@@ -68,6 +74,8 @@ https://doh.example.com/dns-query/<43字符随机令牌>
 ```
 
 用户只需在支持 DoH 的客户端中设置该完整地址。无需 UA 限制或额外请求头。UA 可以伪造，不能作为可靠身份。
+
+需要同一解析器兼容公共域名时，可使用独立的[客户端兼容入口](docs/COMPATIBILITY.md)。私有分区不会回退公共 DNS；原入口行为不变。
 
 新增 DNS 服务器只填公网 IP、SSH 端口、用户名、密码 / 私钥，核对服务器指纹后自动部署。服务器使用同一个 DoH 域名，不必逐个准备独立 HTTPS 名称。
 

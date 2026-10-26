@@ -39,6 +39,12 @@ HTTP 400：编码或消息错误；403：令牌无效、过期、撤销或用户
 
 后台及 DoH 响应都使用 `no-store`。用户令牌不会通过列表接口再次返回；遗失时撤销并重新签发。
 
+## 兼容 DoH（v0.3.4）
+
+`GET /dns-query/compat/{token}?dns=...` 或 `POST /dns-query/compat/{token}`。认证、限速和 wire 格式与普通 DoH 相同。已配置的私有分区（包括停用分区）不转发；其他普通查询通过固定 HTTPS 公共上游处理。上游失败返回 HTTP 200 + DNS SERVFAIL。
+
+后台创建令牌仍返回原私有入口地址；需要兼容解析时，将路径 `/dns-query/` 改为 `/dns-query/compat/`，令牌保持不变。升级时先更新主控，再更新统一域名指向的所有 agent。细节见 [兼容说明](COMPATIBILITY.md)。
+
 ## 节点同步
 
 节点每 3 秒 POST `{node_id,applied_revision,version,report}`。报告格式见 `src/model.rs`；每个批次有 UUID、最多 120 个分钟桶。主控事务去重，验证非负计数及总数一致性。
