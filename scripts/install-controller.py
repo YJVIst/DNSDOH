@@ -290,6 +290,22 @@ WantedBy=timers.target
     run('systemctl', 'daemon-reload')
 
 
+def prompt_domain():
+    # /dev/tty is not seekable. Text update mode (r+) can fail before
+    # displaying the prompt; use separate read-only and write-only streams.
+    # A controlling terminal also works when stdin is a pipe or /dev/null.
+    try:
+        with open('/dev/tty', 'r', encoding='utf-8') as reader, open('/dev/tty', 'w', encoding='utf-8') as writer:
+            writer.write('请输入管理域名（已解析到本机，例如 admin.example.com）：')
+            writer.flush()
+            value = reader.readline().strip()
+    except OSError as exc:
+        raise RuntimeError('无法读取交互终端，请使用 --domain admin.example.com 指定管理域名') from exc
+    if not value:
+        raise RuntimeError('未输入管理域名，请重新运行或使用 --domain admin.example.com 指定')
+    return value
+
+
 def install(args):
     global LOG
     if os.geteuid() != 0 or platform.machine() != 'x86_64':
@@ -298,9 +314,7 @@ def install(args):
     if not supported_os(release) or not Path('/run/systemd/system').exists():
         raise RuntimeError('主控一键安装支持运行 systemd 的 Debian 12/13、Ubuntu 22.04/24.04')
     if not args.domain:
-        with open('/dev/tty', 'r+') as tty:
-            tty.write('请输入管理域名（已解析到本机，例如 admin.example.com）：'); tty.flush()
-            args.domain = tty.readline().strip()
+        args.domain = prompt_domain()
     domain = domain_name(args.domain)
     source = Path(args.bundle or Path(__file__).resolve().parents[1]).resolve()
     binary = source / 'agent/dnsdoh'

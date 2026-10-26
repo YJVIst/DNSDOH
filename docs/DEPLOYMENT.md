@@ -30,6 +30,16 @@ cat /opt/dnsdoh/runtime/管理员登录信息.txt
 
 首次登录仍需完成 DNS 供应商向导：填写自己的 API 凭据，选择有权限的主域名及 DoH 标签，然后系统自动创建统一 DoH 服务。建议管理域名 `admin.example.com`，DoH 域名 `doh.example.com`。两者不能重名。
 
+## 非交互安装与旧版提示错误
+
+SSH 自动化或没有交互终端时，显式传入域名：
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/YJVIst/DNSDOH/main/install.sh) --domain admin.example.com
+```
+
+如果旧版在显示“发布包已通过校验”后报 `File or stream is not seekable`，这是读取管理域名时以读写模式打开终端造成的。v0.3.5 已修复；重新执行最新的一键安装命令即可。若此前设置过 `DNSDOH_VERSION`，应取消旧版本设置或改为 `v0.3.5`。使用原安装目录和原管理域名重试，无需删除数据库或凭据。
+
 ## 安装目录
 
 默认主控目录为 `/opt/dnsdoh`，节点目录为 `/opt/dnsdoh-node`。两者互相独立，不依赖开发机器的存储布局。

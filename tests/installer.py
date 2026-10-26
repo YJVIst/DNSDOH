@@ -11,13 +11,91 @@ import tarfile
 from pathlib import Path
 import tempfile
 import unittest
+import pty
+import select
+import time
+import re
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('installer', ROOT / 'scripts/install-controller.py')
 i = importlib.util.module_from_spec(spec); spec.loader.exec_module(i)
 
+def terminal_run(argv, reply, env=None, redirected_stdin=False):
+    """Run with a real controlling PTY, including the bootstrap's exec chain."""
+    pid, fd = pty.fork()
+    if pid == 0:
+        try:
+            if redirected_stdin:
+                null = os.open(os.devnull, os.O_RDONLY)
+                os.dup2(null, 0)
+                os.close(null)
+            os.execvpe(argv[0], argv, env or os.environ.copy())
+        finally:
+            os._exit(127)
+    output = bytearray()
+    sent = False
+    deadline = time.monotonic() + 20
+    try:
+        while time.monotonic() < deadline:
+            if select.select([fd], [], [], .1)[0]:
+                try:
+                    chunk = os.read(fd, 65536)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                output.extend(chunk)
+                if not sent and '请输入管理域名'.encode() in output:
+                    os.write(fd, reply)
+                    sent = True
+        else:
+            raise AssertionError('Interactive installer timed out')
+        _, status = os.waitpid(pid, 0)
+        pid = None
+        return os.waitstatus_to_exitcode(status), output.decode('utf-8', errors='replace')
+    finally:
+        os.close(fd)
+        if pid is not None:
+            os.kill(pid, 9)
+            os.waitpid(pid, 0)
+
+
 class Installer(unittest.TestCase):
+    def prompt_command(self):
+        return [sys.executable, '-c',
+                'import importlib.util; s=importlib.util.spec_from_file_location("installer", '
+                + repr(str(ROOT / 'scripts/install-controller.py'))
+                + '); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); '
+                + 'print("DOMAIN=" + m.domain_name(m.prompt_domain()))']
+
+    def test_interactive_domain_with_controlling_terminal(self):
+        code, output = terminal_run(self.prompt_command(), b'ADMIN.Example.COM\n')
+        self.assertEqual(code, 0, output)
+        self.assertIn('DOMAIN=admin.example.com', output)
+
+    def test_interactive_domain_does_not_require_seekable_stdin(self):
+        code, output = terminal_run(self.prompt_command(), b'admin.example.com\n', redirected_stdin=True)
+        self.assertEqual(code, 0, output)
+        self.assertIn('DOMAIN=admin.example.com', output)
+
+    def test_interactive_eof_has_actionable_error(self):
+        code, output = terminal_run(self.prompt_command(), b'\x04')
+        self.assertNotEqual(code, 0)
+        self.assertIn('未输入管理域名', output)
+        self.assertIn('--domain', output)
+
+    def test_headless_install_requires_explicit_domain(self):
+        result = subprocess.run(self.prompt_command(), stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True, start_new_session=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('--domain', result.stderr)
+        self.assertNotIn('not seekable', result.stderr)
+
+    def test_bootstrap_default_matches_release_version(self):
+        version = re.search(r'^version = "([^"\n]+)"', (ROOT / 'Cargo.toml').read_text(), re.M).group(1)
+        self.assertIn('${DNSDOH_VERSION:-v' + version + '}', (ROOT / 'install.sh').read_text())
+
     def test_domain_rejects_code_paths_and_ips(self):
         for value in ['https://admin.example.com', 'admin.example.com:443', '127.0.0.1', 'a..com', 'a.com;id', 'a.com\nserver {}', 'localhost', 'a.invalid', '-a.com', 'a-.com']:
             with self.subTest(value=value), self.assertRaises(ValueError): i.domain_name(value)
@@ -119,7 +197,8 @@ class Installer(unittest.TestCase):
         # local release fixture. The fake installer only reports its argv.
         with tempfile.TemporaryDirectory() as d:
             base = Path(d); fixture = base / 'fixture'; fixture.mkdir()
-            payload = b'import sys,json; print(json.dumps(sys.argv[1:]))\n'
+            payload = ('import sys,json\nif "--domain" not in sys.argv:\n    '
+                       + self.prompt_command()[2] + '\nelse:\n    print(json.dumps(sys.argv[1:]))\n').encode()
             bundle = fixture / 'DNSDOH-linux-amd64.tar.gz'
             with tarfile.open(bundle, 'w:gz') as archive:
                 member = tarfile.TarInfo('DNSDOH/scripts/install-controller.py'); member.size = len(payload)
@@ -138,6 +217,16 @@ class Installer(unittest.TestCase):
                 self.assertEqual(argv, ['--data-dir', str(selected), '--domain', 'admin.example.com'])
                 self.assertTrue((selected / 'installer/cache' / bundle.name).exists())
                 self.assertFalse((base / 'unused').exists())
+            # Same process-substitution invocation used by the documented curl
+            # command, with local downloaded assets and no host installation.
+            selected = base / 'interactive'
+            env = {**os.environ, 'PATH': str(fakebin) + ':' + os.environ['PATH'],
+                   'FIXTURE': str(fixture), 'DNSDOH_DATA_ROOT': str(selected)}
+            code, output = terminal_run(['bash', '-c', 'bash <(cat "$1")', 'bootstrap-test', str(ROOT / 'install.sh')],
+                                        b'admin.example.com\n', env, redirected_stdin=True)
+            self.assertEqual(code, 0, output)
+            self.assertIn('发布包已通过校验', output)
+            self.assertIn('DOMAIN=admin.example.com', output)
 
     def test_supported_main_platforms_are_explicit(self):
         for name, version in [('debian','12'),('debian','13'),('ubuntu','22.04'),('ubuntu','24.04')]: self.assertTrue(i.supported_os({'ID':name,'VERSION_ID':version}))

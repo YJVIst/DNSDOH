@@ -2,7 +2,7 @@
 # DNSDOH controller bootstrap. Downloads and temporary files stay under the selected data directory.
 set -euo pipefail
 umask 077
-version="${DNSDOH_VERSION:-v0.3.3}"
+version="${DNSDOH_VERSION:-v0.3.5}"
 repository="YJVIst/DNSDOH"
 data_root="${DNSDOH_DATA_ROOT:-/opt/dnsdoh}"
 installer_args=()
