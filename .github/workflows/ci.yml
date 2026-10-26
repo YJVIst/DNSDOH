@@ -46,7 +46,8 @@ jobs:
           config.chmod(0o600)
           with open(os.environ['GITHUB_ENV'], 'a') as f:
             f.write(f'DNSDOH_TEST_ENV={config}\nDNSDOH_TEST_RUNTIME={temp}/integration\n')
-      - run: /usr/bin/python3 tests/installer.py
-        env:
-          DNSDOH_TEST_TMP: ${{ runner.temp }}
+      - name: Verify installer paths and bootstrap
+        run: |
+          sudo install -d -m 700 /srv/dnsdoh-ci-tests
+          sudo env TMPDIR=/srv/dnsdoh-ci-tests DNSDOH_TEST_TMP=/srv/dnsdoh-ci-tests /usr/bin/python3 tests/installer.py
       - run: /usr/bin/python3 tests/integration.py

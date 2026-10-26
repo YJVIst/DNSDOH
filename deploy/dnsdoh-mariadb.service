@@ -1,25 +1,24 @@
 [Unit]
 Description=DNSDOH isolated MariaDB
 After=network.target
-RequiresMountsFor=/mnt/youlin-data
+RequiresMountsFor=/opt/dnsdoh
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 User=dnsdoh-db
 Group=dnsdoh-db
-Environment=LD_LIBRARY_PATH=/mnt/youlin-data/tools/mariadb-root/usr/lib/x86_64-linux-gnu
-ExecStart=/mnt/youlin-data/tools/mariadb-root/usr/sbin/mariadbd --no-defaults --basedir=/mnt/youlin-data/tools/mariadb-root/usr --datadir=/mnt/youlin-data/runtime/mariadb --socket=/mnt/youlin-data/runtime/mariadb-run/mariadb.sock --pid-file=/mnt/youlin-data/runtime/mariadb-run/mariadb.pid --port=13306 --bind-address=127.0.0.1 --skip-log-bin --innodb-buffer-pool-size=128M --tmpdir=/mnt/youlin-data/runtime/mariadb-run/tmp --log-error=/mnt/youlin-data/runtime/mariadb-run/error.log
+ExecStart=/usr/sbin/mariadbd --no-defaults --basedir=/usr --datadir=/opt/dnsdoh/runtime/mariadb --socket=/opt/dnsdoh/runtime/mariadb-run/mariadb.sock --pid-file=/opt/dnsdoh/runtime/mariadb-run/mariadb.pid --port=13306 --bind-address=127.0.0.1 --skip-log-bin --innodb-buffer-pool-size=128M --tmpdir=/opt/dnsdoh/runtime/mariadb-run/tmp --log-error=/opt/dnsdoh/runtime/mariadb-run/error.log
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=90
 LimitNOFILE=32768
-StandardOutput=append:/mnt/youlin-data/runtime/mariadb-console.log
-StandardError=append:/mnt/youlin-data/runtime/mariadb-console.log
+StandardOutput=append:/opt/dnsdoh/runtime/mariadb-console.log
+StandardError=append:/opt/dnsdoh/runtime/mariadb-console.log
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/mnt/youlin-data/runtime/mariadb /mnt/youlin-data/runtime/mariadb-run
+ReadWritePaths=/opt/dnsdoh/runtime/mariadb /opt/dnsdoh/runtime/mariadb-run
 PrivateTmp=true
 UMask=0077
 

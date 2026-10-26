@@ -19,7 +19,7 @@ import time
 import urllib.error
 import urllib.request
 
-DATA = Path('/mnt/youlin-data')
+DATA = Path('/opt/dnsdoh')
 PROJECT = DATA / 'DNSDOH'
 RUNTIME = DATA / 'runtime'
 HOSTING = DATA / 'hosting'
@@ -29,6 +29,26 @@ ENV = RUNTIME / 'controller.env'
 NGINX = Path('/etc/nginx/conf.d/dnsdoh-admin.conf')
 MARKER = '# Managed by DNSDOH controller installer\n'
 LOG = None
+
+
+def configure_paths(value):
+    global DATA, PROJECT, RUNTIME, HOSTING, INSTALL, STATE, ENV
+    if (not re.fullmatch(r'/[a-zA-Z0-9_./-]+', value) or
+            any(part in ('.', '..') for part in value.split('/')) or
+            '//' in value or value.endswith('/') or
+            value in ('/opt', '/usr', '/var', '/etc', '/mnt', '/srv', '/tmp', '/var/tmp', '/home') or
+            value.startswith(('/root/', '/home/', '/tmp/', '/var/tmp/')) or value == '/root'):
+        raise ValueError('安装目录须为独立绝对路径，仅含字母、数字、下划线、点、斜线和短横线；不要使用 /root、/home 或临时目录（服务隔离不允许访问）')
+    path = Path(value)
+    if any(p.is_symlink() for p in (path, *path.parents)):
+        raise ValueError('安装目录及父目录不能是符号链接')
+    DATA = path
+    PROJECT, RUNTIME, HOSTING, INSTALL = (DATA / p for p in ('DNSDOH', 'runtime', 'hosting', 'installer'))
+    STATE, ENV = RUNTIME / 'install-controller.json', RUNTIME / 'controller.env'
+
+
+def render_template(source, name):
+    return (source / 'deploy' / name).read_text().replace('/opt/dnsdoh', str(DATA))
 
 
 def domain_name(value):
@@ -226,10 +246,10 @@ UMask=0077
 [Install]
 WantedBy=multi-user.target
 ''')
-    controller = (source / 'deploy/dnsdoh@.service').read_text().replace('After=network-online.target', 'After=network-online.target dnsdoh-mariadb.service').replace('Wants=network-online.target', 'Wants=network-online.target dnsdoh-mariadb.service')
+    controller = render_template(source, 'dnsdoh@.service').replace('After=network-online.target', 'After=network-online.target dnsdoh-mariadb.service').replace('Wants=network-online.target', 'Wants=network-online.target dnsdoh-mariadb.service')
     unit('dnsdoh@.service', controller)
     for name in ('dnsdoh-domain-maintain.service', 'dnsdoh-domain-maintain.timer'):
-        unit(name, (source / 'deploy' / name).read_text())
+        unit(name, render_template(source, name))
     hook = PROJECT / 'scripts/reload-nginx.sh'
     atomic(hook, '#!/bin/sh\nset -eu\n/usr/sbin/nginx -t\n/bin/systemctl reload nginx\n', 0o755)
     unit('dnsdoh-admin-cert.service', f'''[Unit]
@@ -255,7 +275,7 @@ Description=Back up DNSDOH MariaDB and matching encryption configuration
 RequiresMountsFor={DATA}
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 {PROJECT}/scripts/backup.py --dump {shutil.which('mariadb-dump')}
+ExecStart=/usr/bin/python3 {PROJECT}/scripts/backup.py --env {ENV} --output {RUNTIME}/backups --dump {shutil.which('mariadb-dump')}
 UMask=0077
 ''')
     unit('dnsdoh-backup.timer', '''[Unit]
@@ -292,7 +312,7 @@ def install(args):
         for port in (18080, 13306): free_port(port)
         if NGINX.exists(): raise RuntimeError('已有同名 Nginx 配置，拒绝覆盖')
         for name in ('dnsdoh-mariadb.service', 'dnsdoh@.service', 'dnsdoh-domain-maintain.service', 'dnsdoh-domain-maintain.timer', 'dnsdoh-backup.service', 'dnsdoh-backup.timer', 'dnsdoh-admin-cert.service', 'dnsdoh-admin-cert.timer'):
-            if (Path('/etc/systemd/system') / name).exists(): raise RuntimeError('发现既有 DNSDOH 服务，拒绝覆盖：' + name)
+            if (Path('/etc/systemd/system') / name).exists(): raise RuntimeError('发现既有 DNSDOH 服务，拒绝覆盖：' + name + '；重试旧安装时请通过 --data-dir 指定原安装目录，本脚本不会自动迁移数据')
     else:
         state = json.loads(STATE.read_text())
         if state['domain'] != domain:
@@ -322,7 +342,7 @@ def install(args):
     except BlockingIOError: raise RuntimeError('已有主控安装任务正在执行')
     if STATE.exists(): state = json.loads(STATE.read_text()); env = parse_env(ENV)
     else:
-        state = {'schema': 1, 'domain': domain, 'stage': '初始化'}
+        state = {'schema': 1, 'domain': domain, 'data_dir': str(DATA), 'stage': '初始化'}
         env = controller_env(domain)
         atomic(ENV, ''.join(k + '=' + v + '\n' for k, v in env.items()))
         atomic(STATE, json.dumps(state))
@@ -402,11 +422,14 @@ innodb-buffer-pool-size=128M
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--data-dir', default=os.environ.get('DNSDOH_DATA_ROOT', '/opt/dnsdoh'), help='Installation and data directory (default: /opt/dnsdoh)')
     p.add_argument('--domain', help='Management hostname already pointing to this server')
     p.add_argument('--bundle', help='Extracted release directory for offline-artifact installation')
     p.add_argument('--preflight', action='store_true', help='Read-only validation; no installation')
     args = p.parse_args()
-    try: install(args)
+    try:
+        configure_paths(args.data_dir)
+        install(args)
     except (RuntimeError, ValueError, subprocess.SubprocessError, OSError) as exc:
         # subprocess diagnostics can contain credentials: show only our fixed stage/error.
         message = str(exc) if isinstance(exc, (RuntimeError, ValueError)) else '系统步骤失败，请检查受保护的安装日志'

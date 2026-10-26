@@ -8,13 +8,13 @@ import shutil
 import tarfile
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
-out=Path(os.environ.get('DNSDOH_ARTIFACTS','/mnt/youlin-data/artifacts'));out.mkdir(parents=True,exist_ok=True)
+out=Path(os.environ.get('DNSDOH_ARTIFACTS',str(root/'artifacts')));out.mkdir(parents=True,exist_ok=True)
 try:
     files=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','-z'],cwd=root,stderr=subprocess.DEVNULL).split(b'\0')
 except subprocess.CalledProcessError:
     # A downloaded source archive has no .git. Honor its .gitignore using an
     # isolated temporary index, without creating a repository in the source tree.
-    temporary_root=Path(os.environ.get('TMPDIR','/mnt/youlin-data/tmp'));temporary_root.mkdir(parents=True,exist_ok=True)
+    temporary_root=Path(os.environ.get('TMPDIR',str(root/'.build/tmp')));temporary_root.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(dir=temporary_root) as temporary:
         subprocess.run(['git','init','--quiet',temporary],check=True)
         files=subprocess.check_output(['git','--git-dir='+str(Path(temporary)/'.git'),'--work-tree='+str(root),'ls-files','--others','--exclude-standard','-z'],cwd=root).split(b'\0')

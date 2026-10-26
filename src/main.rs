@@ -84,13 +84,17 @@ enum Command {
         node_id: String,
         #[arg(long, env = "DNSDOH_BIND", default_value = "127.0.0.1:18081")]
         bind: SocketAddr,
-        #[arg(long, default_value = "/mnt/youlin-data/dnsdoh-node")]
+        #[arg(long, env = "DNSDOH_NODE_ROOT", default_value = "/opt/dnsdoh-node")]
         root: PathBuf,
     },
     ControllerMaintain {
         #[arg(long, env = "DNSDOH_BIND", default_value = "127.0.0.1:18080")]
         bind: SocketAddr,
-        #[arg(long, default_value = "/mnt/youlin-data/runtime/direct-tls")]
+        #[arg(
+            long,
+            env = "DNSDOH_TLS_ROOT",
+            default_value = "/opt/dnsdoh/runtime/direct-tls"
+        )]
         root: PathBuf,
         #[arg(long, default_value = "/etc/nginx/conf.d/dnsdoh-direct.conf")]
         config: PathBuf,

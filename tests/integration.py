@@ -26,9 +26,9 @@ import urllib.request
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNTIME = Path(os.environ.get('DNSDOH_TEST_RUNTIME', '/mnt/youlin-data/runtime/integration'))
+RUNTIME = Path(os.environ.get('DNSDOH_TEST_RUNTIME', str(Path(__file__).resolve().parents[1] / 'runtime/integration')))
 RUNTIME.mkdir(parents=True, exist_ok=True, mode=0o700)
-CONFIG = Path(os.environ.get('DNSDOH_TEST_ENV', '/mnt/youlin-data/runtime/test.env'))
+CONFIG = Path(os.environ.get('DNSDOH_TEST_ENV', str(Path(__file__).resolve().parents[1] / 'runtime/test.env')))
 ENV = os.environ.copy()
 ENV.update(dict(line.split('=', 1) for line in CONFIG.read_text().splitlines() if line and not line.startswith('#')))
 ENV["DNSDOH_TEST_MODE"]="true"

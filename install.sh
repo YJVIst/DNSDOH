@@ -1,15 +1,36 @@
 #!/usr/bin/env bash
-# DNSDOH controller bootstrap. All downloads and temporary data stay on the data disk.
+# DNSDOH controller bootstrap. Downloads and temporary files stay under the selected data directory.
 set -euo pipefail
 umask 077
-version="${DNSDOH_VERSION:-v0.3.2}"
+version="${DNSDOH_VERSION:-v0.3.3}"
 repository="YJVIst/DNSDOH"
-installer_root=/mnt/youlin-data/installer
+data_root="${DNSDOH_DATA_ROOT:-/opt/dnsdoh}"
+installer_args=()
+while (($#)); do
+  case "$1" in
+    --data-dir) [[ $# -ge 2 ]] || { echo '--data-dir requires a path' >&2; exit 1; }; data_root="$2"; shift 2 ;;
+    --data-dir=*) data_root="${1#*=}"; shift ;;
+    -h|--help) echo 'Usage: install.sh [--domain admin.example.com] [--data-dir /opt/dnsdoh]'; exit 0 ;;
+    *) installer_args+=("$1"); shift ;;
+  esac
+done
+if [[ ! $data_root =~ ^/[a-zA-Z0-9_./-]+$ || $data_root == */ || $data_root == *//* ]]; then
+  echo '安装目录必须是独立绝对路径，不能包含空格或特殊字符。' >&2; exit 1
+fi
+case "$data_root" in
+  /opt|/usr|/var|/etc|/mnt|/srv|/tmp|/tmp/*|/var/tmp|/var/tmp/*|/root|/root/*|/home|/home/*|*/./*|*/../*|*/.|*/..) echo '请指定独立目录，且不要放在 /root、/home 或临时目录。' >&2; exit 1 ;;
+esac
+check_path="$data_root"
+while [[ "$check_path" != / ]]; do
+  [[ ! -L "$check_path" ]] || { echo '安装目录及父目录不能是符号链接。' >&2; exit 1; }
+  check_path="$(dirname "$check_path")"
+done
+installer_root="$data_root/installer"
 if [[ ${EUID} -ne 0 ]]; then echo '请使用 root 执行安装。' >&2; exit 1; fi
 if [[ $(uname -m) != x86_64 ]]; then echo '主控一键安装目前支持 Linux x86_64。' >&2; exit 1; fi
 if [[ ! $version =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo '版本号格式错误。' >&2; exit 1; fi
 if ! command -v apt-get >/dev/null; then echo '主控一键安装支持 Debian 12/13、Ubuntu 22.04/24.04。' >&2; exit 1; fi
-if [[ ! -d /mnt/youlin-data ]]; then install -d -m 755 /mnt/youlin-data; fi
+if [[ ! -d "$data_root" ]]; then install -d -m 755 "$data_root"; fi
 mkdir -p "$installer_root/cache" "$installer_root/tmp" "$installer_root/apt-cache" "$installer_root/apt-lists/partial"
 export TMPDIR="$installer_root/tmp" DEBIAN_FRONTEND=noninteractive
 if ! command -v python3 >/dev/null || ! command -v curl >/dev/null; then
@@ -44,4 +65,4 @@ with tarfile.open(bundle) as archive:
         path.chmod(0o755 if m.mode & 0o111 else 0o644)
 print('发布包已通过校验。')
 PY
-exec python3 "$installer_root/stage-$version/DNSDOH/scripts/install-controller.py" "$@"
+exec python3 "$installer_root/stage-$version/DNSDOH/scripts/install-controller.py" --data-dir "$data_root" "${installer_args[@]}"

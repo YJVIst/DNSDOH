@@ -2,15 +2,15 @@
 Description=Back up DNSDOH MariaDB
 After=dnsdoh-mariadb.service
 Requires=dnsdoh-mariadb.service
-RequiresMountsFor=/mnt/youlin-data
+RequiresMountsFor=/opt/dnsdoh
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /mnt/youlin-data/DNSDOH/scripts/backup.py
+ExecStart=/usr/bin/python3 /opt/dnsdoh/DNSDOH/scripts/backup.py
 UMask=0077
-StandardOutput=append:/mnt/youlin-data/runtime/backup.log
-StandardError=append:/mnt/youlin-data/runtime/backup.log
+StandardOutput=append:/opt/dnsdoh/runtime/backup.log
+StandardError=append:/opt/dnsdoh/runtime/backup.log
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/mnt/youlin-data/runtime/backups
+ReadWritePaths=/opt/dnsdoh/runtime/backups

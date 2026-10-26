@@ -92,14 +92,14 @@ def main():
   check(m.sql('SELECT COUNT(*) FROM dns_providers')=='3','failed credential validation does not persist provider')
   global_key=c.api('/providers','POST',{'kind':'cloudflare','name':'Global Key contract','credentials':{'email':'owner@example.test','key_secret':'cf-global-contract'}})
   check(len(global_key['zones'])==51,'Cloudflare Global API Key plus email supports account-wide zone discovery')
-  env=m.ENV.copy();env.update(CARGO_HOME='/mnt/youlin-data/cache/cargo',TMPDIR='/mnt/youlin-data/tmp',DNSDOH_PROVIDER_TEST_URL='http://127.0.0.1:19992')
-  with open('/mnt/youlin-data/runtime/provider-rust-contract.log','w') as log:
-   child=subprocess.run(['/root/.cargo/bin/cargo','test','--locked','providers::tests::provider_lifecycle_contract','--','--ignored','--exact'],cwd=ROOT,env=env,stdout=log,stderr=log)
+  env=m.ENV.copy();env.update(DNSDOH_PROVIDER_TEST_URL='http://127.0.0.1:19992')
+  with open(m.RUNTIME / 'provider-rust-contract.log','w') as log:
+   child=subprocess.run(['cargo','test','--locked','providers::tests::provider_lifecycle_contract','--','--ignored','--exact'],cwd=ROOT,env=env,stdout=log,stderr=log)
   check(child.returncode==0,'Cloudflare/AliDNS/DNSPod A, AAAA and ACME TXT create/list/delete pass independent signing fixtures')
   check(not records and not ali_records and not pod_records,'all provider lifecycle fixtures cleaned up')
   from ssh_fixture import exercise
   exercise(m,c,check)
-  Path('/mnt/youlin-data/runtime/provider-contract-report.json').write_text(json.dumps({'passed':len(checks),'checks':checks,'scope':'local HTTP contract fixtures with independent signature validation; only Cloudflare separately verified live'},indent=2))
+  (m.RUNTIME / 'provider-contract-report.json').write_text(json.dumps({'passed':len(checks),'checks':checks,'scope':'local HTTP contract fixtures with independent signature validation; only Cloudflare separately verified live'},indent=2))
   print('ALL',len(checks),'PROVIDER CONTRACT CHECKS PASSED')
  finally:
   m.stop(controller);server.shutdown();server.server_close()

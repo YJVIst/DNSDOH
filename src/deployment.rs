@@ -399,7 +399,7 @@ async fn install(
         .await;
     if code != Some(0) {
         return Err(ApiError::bad(
-            "远程安装未成功。请检查 /mnt/youlin-data/dnsdoh-node/run/install.log、端口和系统兼容性后重试",
+            "远程安装未成功。请检查节点安装目录下的 run/install.log（默认 /opt/dnsdoh-node/run/install.log）、端口和系统兼容性后重试",
         ));
     }
     Ok(())

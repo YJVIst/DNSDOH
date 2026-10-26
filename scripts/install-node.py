@@ -15,7 +15,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-ROOT = Path('/mnt/youlin-data/dnsdoh-node')
+ROOT = Path('/opt/dnsdoh-node')
 MARKER = '# Managed by DNSDOH node installer\n'
 LOG = None
 
@@ -78,14 +78,24 @@ def install_packages(family):
         run('pacman', '--noconfirm', '--needed', '--cachedir', str(ROOT / 'package-cache'), '-S', *packages)
 
 def main():
-    global LOG
+    global LOG, ROOT
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--root', default=os.environ.get('DNSDOH_NODE_ROOT', '/opt/dnsdoh-node'), help='Node directory (default: /opt/dnsdoh-node)')
     p.add_argument('--controller')
     p.add_argument('--ticket')
     p.add_argument('--node-id')
     p.add_argument('--endpoint')
     p.add_argument('--platform-plan', action='store_true')
     args = p.parse_args()
+    if (not re.fullmatch(r'/[a-zA-Z0-9_./-]+', args.root) or
+            any(part in ('.', '..') for part in args.root.split('/')) or
+            '//' in args.root or args.root.endswith('/') or
+            args.root in ('/opt', '/usr', '/var', '/etc', '/mnt', '/srv', '/tmp', '/var/tmp', '/root', '/home') or
+            args.root.startswith(('/root/', '/home/', '/tmp/', '/var/tmp/'))):
+        raise RuntimeError('Use a dedicated absolute node directory outside /root and /home, without shell metacharacters')
+    ROOT = Path(args.root)
+    if any(p.is_symlink() for p in (ROOT, *ROOT.parents)):
+        raise RuntimeError('Node directory and parents must not be symbolic links')
     family, init = os_family(release_info())
     if args.platform_plan:
         print(json.dumps({'family': family, 'init': init, 'architecture': platform.machine()}))
@@ -103,10 +113,14 @@ def main():
     host = urllib.parse.urlsplit(args.endpoint).hostname
     if len(args.ticket) != 43:
         raise RuntimeError('Invalid installation ticket')
+    # Refuse accidental relocation of an existing node and its signed identity.
+    for service in (Path('/etc/systemd/system/dnsdoh-node.service'), Path('/etc/init.d/dnsdoh-node')):
+        if service.exists() and str(ROOT / 'bin/dnsdoh') not in service.read_text():
+            raise RuntimeError('An existing node uses another directory; set DNSDOH_NODE_ROOT to its original path before retrying')
     ROOT.mkdir(parents=True, exist_ok=True)
     ROOT.chmod(0o755)
     if not ROOT.parent.stat().st_mode & 0o001:
-        raise RuntimeError('/mnt/youlin-data must allow directory traversal')
+        raise RuntimeError(str(ROOT.parent) + ' must allow directory traversal')
     for folder in ('bin', 'run', 'tmp', 'tls', 'package-cache', 'apt-cache', 'apt-lists/partial'):
         path = ROOT / folder
         path.mkdir(parents=True, exist_ok=True)
@@ -298,7 +312,7 @@ if __name__ == '__main__':
     try:
         main()
     except Exception as error:
-        print('DNSDOH installation failed; check /mnt/youlin-data/dnsdoh-node/run/install.log', file=sys.stderr)
+        print('DNSDOH installation failed; check ' + str(ROOT / 'run/install.log'), file=sys.stderr)
         if LOG:
             LOG.write('Failure category: ' + type(error).__name__ + '\n')
             if isinstance(error, RuntimeError):

@@ -13,8 +13,8 @@ import time
 import urllib.error
 import urllib.request
 
-p=argparse.ArgumentParser();p.add_argument('--disposable',action='store_true',required=True);p.add_argument('--after-rerun',action='store_true');args=p.parse_args()
-r=Path('/mnt/youlin-data/runtime');work=Path('/mnt/youlin-data/installer-test');work.mkdir(exist_ok=True,mode=0o700)
+p=argparse.ArgumentParser();p.add_argument('--disposable',action='store_true',required=True);p.add_argument('--after-rerun',action='store_true');p.add_argument('--data-dir',default='/opt/dnsdoh');args=p.parse_args()
+data=Path(args.data_dir);r=data/'runtime';work=data/'installer-test';work.mkdir(exist_ok=True,mode=0o700)
 env=dict(l.split('=',1) for l in (r/'controller.env').read_text().splitlines() if l and not l.startswith('#'))
 state=json.loads((r/'install-controller.json').read_text());assert state['stage']=='安装完成'
 checks=[]
@@ -47,7 +47,7 @@ for name in ['dnsdoh@controller.service','dnsdoh-mariadb.service','dnsdoh-admin-
  check(subprocess.check_output(['systemctl','is-active',name],text=True).strip()=='active' and subprocess.check_output(['systemctl','is-enabled',name],text=True).strip()=='enabled',name+' active and enabled')
 for path in [r/'controller.env',r/'管理员登录信息.txt']:
  check(path.stat().st_mode&0o777==0o600,path.name+' protected with 0600 permissions')
-check(sql('SELECT @@datadir').startswith(str(r/'mariadb')),'MariaDB stores its actual data on the data disk')
+check(sql('SELECT @@datadir').startswith(str(r/'mariadb')),'MariaDB stores its actual data in the selected installation directory')
 check(sql('SELECT @@port')=='13306' and sql('SELECT @@bind_address')=='127.0.0.1','MariaDB bound only to dedicated loopback port')
 backups=list((r/'backups').glob('*.sql.gz'));check(bool(backups) and all(x.with_suffix(x.suffix+'.env').exists() for x in backups),'successful initial backup includes matching original configuration')
 check(subprocess.check_output(['systemctl','is-active','dnsdoh-node','sing-box'],text=True).splitlines()==['active','active'],'pre-existing DNS node and unrelated service remain active')

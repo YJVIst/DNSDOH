@@ -1,11 +1,11 @@
 [Unit]
 Description=Apply DNSDOH controller unified-domain certificates
 After=network-online.target nginx.service dnsdoh@controller.service
-RequiresMountsFor=/mnt/youlin-data
+RequiresMountsFor=/opt/dnsdoh
 [Service]
 Type=oneshot
-EnvironmentFile=/mnt/youlin-data/runtime/controller.env
-ExecStart=/mnt/youlin-data/DNSDOH/target/release/dnsdoh controller-maintain
+EnvironmentFile=/opt/dnsdoh/runtime/controller.env
+ExecStart=/opt/dnsdoh/DNSDOH/target/release/dnsdoh controller-maintain --root /opt/dnsdoh/runtime/direct-tls
 UMask=0077
-StandardOutput=append:/mnt/youlin-data/runtime/domain-maintain.log
-StandardError=append:/mnt/youlin-data/runtime/domain-maintain.log
+StandardOutput=append:/opt/dnsdoh/runtime/domain-maintain.log
+StandardError=append:/opt/dnsdoh/runtime/domain-maintain.log

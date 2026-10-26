@@ -3,7 +3,7 @@ import json,os,subprocess,time
 from pathlib import Path
 
 def exercise(m,c,check):
- root=Path('/mnt/youlin-data/runtime/ssh-fixture');root.mkdir(parents=True,exist_ok=True,mode=0o700)
+ root=Path(os.environ.get('DNSDOH_TEST_RUNTIME', str(Path(__file__).resolve().parents[1] / 'runtime'))) / 'ssh-fixture';root.mkdir(parents=True,exist_ok=True,mode=0o700)
  def command(*args):subprocess.run(args,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
  for name,phrase in [('host-one',''),('host-two',''),('client','fixture-key-passphrase')]:
   key=root/name

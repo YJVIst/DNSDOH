@@ -2,20 +2,20 @@
 Description=DNSDOH instance %i
 After=network-online.target
 Wants=network-online.target
-RequiresMountsFor=/mnt/youlin-data
+RequiresMountsFor=/opt/dnsdoh
 StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 User=dnsdoh
 Group=dnsdoh
-EnvironmentFile=/mnt/youlin-data/runtime/%i.env
-ExecStart=/mnt/youlin-data/DNSDOH/target/release/dnsdoh serve
-WorkingDirectory=/mnt/youlin-data/DNSDOH
+EnvironmentFile=/opt/dnsdoh/runtime/%i.env
+ExecStart=/opt/dnsdoh/DNSDOH/target/release/dnsdoh serve
+WorkingDirectory=/opt/dnsdoh/DNSDOH
 Restart=on-failure
 RestartSec=3
-StandardOutput=append:/mnt/youlin-data/runtime/%i.log
-StandardError=append:/mnt/youlin-data/runtime/%i.log
+StandardOutput=append:/opt/dnsdoh/runtime/%i.log
+StandardError=append:/opt/dnsdoh/runtime/%i.log
 TimeoutStopSec=15
 NoNewPrivileges=true
 PrivateTmp=true

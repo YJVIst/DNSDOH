@@ -13,32 +13,29 @@ sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
   build-essential musl-tools pkg-config curl ca-certificates git python3
 
-# 只为尚不存在的专用构建目录设置属主，不改动已有部署数据盘。
-if [ ! -d /mnt/youlin-data ]; then
-  sudo install -d -m 755 -o "$(id -u)" -g "$(id -g)" /mnt/youlin-data
-fi
-mkdir -p /mnt/youlin-data/cache/cargo /mnt/youlin-data/cache/npm /mnt/youlin-data/tmp
-
-export CARGO_HOME=/mnt/youlin-data/cache/cargo
-export RUSTUP_HOME=/mnt/youlin-data/rustup
-export npm_config_cache=/mnt/youlin-data/cache/npm
-export TMPDIR=/mnt/youlin-data/tmp
+# 构建目录任意可写；示例使用当前用户家目录，不影响服务器安装目录。
+export DNSDOH_BUILD_ROOT="$HOME/dnsdoh-build"
+mkdir -p "$DNSDOH_BUILD_ROOT/cache/cargo" "$DNSDOH_BUILD_ROOT/cache/npm" "$DNSDOH_BUILD_ROOT/tmp"
+export CARGO_HOME="$DNSDOH_BUILD_ROOT/cache/cargo"
+export RUSTUP_HOME="$DNSDOH_BUILD_ROOT/rustup"
+export npm_config_cache="$DNSDOH_BUILD_ROOT/cache/npm"
+export TMPDIR="$DNSDOH_BUILD_ROOT/tmp"
 export PATH="$CARGO_HOME/bin:$PATH"
 ```
 
-已有部署数据盘请保留原权限，在获得写权限的构建目录操作，不要对数据库或整个目录递归改属主。
+`DNSDOH_BUILD_ROOT` 只控制构建缓存；部署路径由安装器的 `--data-dir` / `DNSDOH_DATA_ROOT` 控制，默认 `/opt/dnsdoh`。两者独立。已有 Rust 工具链也可沿用其 `CARGO_HOME` 和 `RUSTUP_HOME`，不必另行安装。
 
 通过 [Rust 官方 rustup](https://rust-lang.github.io/rustup/installation/index.html) 安装最小工具链：
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-  -o /mnt/youlin-data/tmp/rustup-init.sh
-sh /mnt/youlin-data/tmp/rustup-init.sh -y --profile minimal
+  -o "$TMPDIR/rustup-init.sh"
+sh "$TMPDIR/rustup-init.sh" -y --profile minimal
 rustup component add rustfmt
 rustup target add x86_64-unknown-linux-musl
 ```
 
-从 [Node.js 官方下载页](https://nodejs.org/en/download) 安装 Node.js 22 / 24 的 Linux x64 版本。可解压官方二进制到 `/mnt/youlin-data/tools/node`，将其 `bin` 加到 PATH；不要求安装到系统根目录。确认：
+从 [Node.js 官方下载页](https://nodejs.org/en/download) 安装 Node.js 22 / 24 的 Linux x64 版本。可解压官方二进制到 `$DNSDOH_BUILD_ROOT/tools/node`，将其 `bin` 加到 PATH；不要求安装到系统根目录。确认：
 
 ```bash
 rustc --version
@@ -51,10 +48,10 @@ musl-gcc --version
 ## 2. 获取源码并编译
 
 ```bash
-cd /mnt/youlin-data
+cd "$DNSDOH_BUILD_ROOT"
 git clone https://github.com/YJVIst/DNSDOH.git
 cd DNSDOH
-git checkout v0.3.2
+git checkout v0.3.3
 
 # 减少并行编译的内存占用；不改变目标服务器的运行配置。
 export CARGO_BUILD_JOBS=1
@@ -87,11 +84,11 @@ export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
 
 ```bash
 python3 scripts/package.py
-cd /mnt/youlin-data/artifacts
+cd artifacts
 sha256sum -c SHA256SUMS
 ```
 
-输出源码包、静态完整安装包、独立主控、独立 agent 和引导脚本。完整安装包内：
+默认输出到仓库下的 `artifacts/`，也可设置 `DNSDOH_ARTIFACTS`。输出源码包、静态完整安装包、独立主控、独立 agent 和引导脚本。完整安装包内：
 
 ```text
 DNSDOH/target/release/dnsdoh   # 静态主控
@@ -106,26 +103,26 @@ DNSDOH/docs/...
 
 ## 4. 把自建程序部署到服务器
 
-将完整包和 `SHA256SUMS` 上传到目标服务器的数据盘，例如 `/mnt/youlin-data/incoming`。目标服务器只需 Debian 12/13 或 Ubuntu 22.04/24.04、x86_64、systemd 和 root，不需要编译工具。
+将完整包和 `SHA256SUMS` 上传到目标服务器任意工作目录，例如 `/root/dnsdoh-release`。这是临时解压目录，服务实际安装到 `/opt/dnsdoh`；二者不必相同。目标服务器只需 Debian 12/13 或 Ubuntu 22.04/24.04、x86_64、systemd 和 root，不需要编译工具。
 
 ```bash
-cd /mnt/youlin-data/incoming
+cd /root/dnsdoh-release
 # 从完整校验文件只检查本次传入的完整安装包。
 sha256sum --check <(grep '  DNSDOH-linux-amd64.tar.gz$' SHA256SUMS)
-mkdir -p /mnt/youlin-data/local-release
-tar -xzf DNSDOH-linux-amd64.tar.gz -C /mnt/youlin-data/local-release
+mkdir -p unpacked
+tar -xzf DNSDOH-linux-amd64.tar.gz -C unpacked
 
-python3 /mnt/youlin-data/local-release/DNSDOH/scripts/install-controller.py \
-  --bundle /mnt/youlin-data/local-release/DNSDOH \
+python3 ./unpacked/DNSDOH/scripts/install-controller.py \
+  --bundle ./unpacked/DNSDOH \
   --domain admin.example.com
 ```
 
-将 `admin.example.com` 换成已解析到本机的管理域名，开放 80 / 443。此路径使用你刚编译的本地程序，不会重新从 GitHub 下载程序，也不会在目标机器编译；安装器会通过 apt 安装 Nginx、MariaDB core 和 Certbot 等运行依赖。
+将 `admin.example.com` 换成已解析到本机的管理域名，开放 80 / 443。需要其他安装路径时追加 `--data-dir /srv/dnsdoh`，所有运行目录和生成的服务配置都会跟随调整。此路径使用你刚编译的本地程序，不会重新从 GitHub 下载程序，也不会在目标机器编译；安装器会通过 apt 安装 Nginx、MariaDB core 和 Certbot 等运行依赖。
 
 安装完成后：
 
 ```bash
-cat /mnt/youlin-data/runtime/管理员登录信息.txt
+cat /opt/dnsdoh/runtime/管理员登录信息.txt
 systemctl status dnsdoh@controller dnsdoh-mariadb
 nginx -t
 ```
@@ -138,7 +135,7 @@ nginx -t
 
 1. 创建 `utf8mb4` 的专用 MariaDB 库及库账户，数据库仅允许主控访问。
 2. 将 `deploy/controller.env.example` 复制到仓库外的 `runtime/controller.env`，填写数据库 URL、管理员初始账户、随机密码、管理 HTTPS URL 和 32 字节 base64url AES 主密钥；权限 0600。URL 中的数据库密码特殊字符需要编码。
-3. 把静态程序放到 `/mnt/youlin-data/DNSDOH/target/release/dnsdoh`。主控使用非特权 `dnsdoh` 用户，环境文件由 systemd 的 `EnvironmentFile` 读取。调整 `deploy/dnsdoh@.service` 的路径后安装并启用 `dnsdoh@controller`。
+3. 把静态程序放到 `/opt/dnsdoh/DNSDOH/target/release/dnsdoh`。主控使用非特权 `dnsdoh` 用户，环境文件由 systemd 的 `EnvironmentFile` 读取。模板默认使用 `/opt/dnsdoh`，采用其他路径时须同步修改所有模板中的该前缀和维护命令的 `--root`。调整 `deploy/dnsdoh@.service` 的路径后安装并启用 `dnsdoh@controller`。
 4. 按 `deploy/nginx.conf` 配置管理域名代理到回环 18080；证书由你的现有 ACME 工具管理。不要将带令牌路径写入访问日志，不要公开管理数据库端口。
 5. 安装 `dnsdoh-domain-maintain.service` / `.timer`，为 root 提供同一份加密配置。它负责将后台生成的统一 DoH 证书应用到专用 Nginx 文件。初次向导完成前不要预占新的 DoH 主机名。
 6. 发布 agent 下载文件与清单，按下一节接入节点；配置每日 SQL + 主密钥备份和管理证书续期。
@@ -148,8 +145,8 @@ nginx -t
 源码运行时，可用 `scripts/run.py` 安全加载 root 专属环境文件，无需将凭据放到命令参数：
 
 ```bash
-python3 scripts/run.py --env /mnt/youlin-data/runtime/controller.env migrate
-python3 scripts/run.py --env /mnt/youlin-data/runtime/controller.env serve
+python3 scripts/run.py --env /opt/dnsdoh/runtime/controller.env migrate
+python3 scripts/run.py --env /opt/dnsdoh/runtime/controller.env serve
 ```
 
 数据库为空时初始化管理员；已有管理员不会被初始环境变量覆盖。服务托管时使用 systemd，以上前台命令用于人工运行与诊断。
@@ -162,10 +159,10 @@ python3 scripts/run.py --env /mnt/youlin-data/runtime/controller.env serve
 python3 - <<'PY'
 import hashlib, json, re, shutil, subprocess
 from pathlib import Path
-binary = Path('/mnt/youlin-data/DNSDOH/target-musl/x86_64-unknown-linux-musl/release/dnsdoh')
+binary = Path('./dnsdoh-agent-linux-amd64').resolve()  # 已复制到当前工作目录的静态程序
 version = subprocess.check_output([binary, '--version'], text=True).split()[-1]
 assert re.fullmatch(r'\d+\.\d+\.\d+', version)
-out = Path('/mnt/youlin-data/hosting/downloads')
+out = Path('/opt/dnsdoh/hosting/downloads')
 out.mkdir(parents=True, exist_ok=True)
 name = f'dnsdoh-{version}-linux-x86_64-musl'
 shutil.copy2(binary, out/name)

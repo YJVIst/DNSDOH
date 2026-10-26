@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 // No traces or screenshots of credentials are retained.
-const runtime = process.env.DNSDOH_RUNTIME || "/mnt/youlin-data/runtime";
-const output = process.env.DNSDOH_ARTIFACTS || "/mnt/youlin-data/artifacts";
+const runtime = process.env.DNSDOH_RUNTIME || new URL("../../runtime", import.meta.url).pathname;
+const output = process.env.DNSDOH_ARTIFACTS || new URL("../../artifacts", import.meta.url).pathname;
 const env = Object.fromEntries(
   fs
     .readFileSync(path.join(runtime, "controller.env"), "utf8")

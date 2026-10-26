@@ -11,10 +11,11 @@ import shutil
 import tempfile
 from urllib.parse import urlsplit, unquote
 
+data = Path(os.environ.get('DNSDOH_DATA_ROOT', '/opt/dnsdoh'))
 p = argparse.ArgumentParser()
-p.add_argument('--env', type=Path, default=Path('/mnt/youlin-data/runtime/controller.env'))
-p.add_argument('--output', type=Path, default=Path('/mnt/youlin-data/runtime/backups'))
-p.add_argument('--dump', default=shutil.which('mariadb-dump') or '/mnt/youlin-data/tools/mariadb-root/usr/bin/mariadb-dump')
+p.add_argument('--env', type=Path, default=data / 'runtime/controller.env')
+p.add_argument('--output', type=Path, default=data / 'runtime/backups')
+p.add_argument('--dump', default=shutil.which('mariadb-dump') or 'mariadb-dump')
 a = p.parse_args()
 os.umask(0o077)
 config = dict(line.split('=', 1) for line in a.env.read_text().splitlines() if line and not line.startswith('#'))
@@ -24,7 +25,6 @@ if db.scheme != 'mysql' or not db.path.strip('/'):
 a.output.mkdir(parents=True, exist_ok=True, mode=0o700)
 env = os.environ.copy()
 env['MYSQL_PWD'] = unquote(db.password or '')
-env['LD_LIBRARY_PATH'] = '/mnt/youlin-data/tools/mariadb-root/usr/lib/x86_64-linux-gnu'
 name = 'dnsdoh-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ') + '.sql.gz'
 destination = a.output / name
 command = [a.dump, '--no-defaults', '--host=' + (db.hostname or '127.0.0.1'),

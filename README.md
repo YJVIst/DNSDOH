@@ -23,10 +23,10 @@ bash <(curl -fsSL https://raw.githubusercontent.com/YJVIst/DNSDOH/main/install.s
 随机生成的管理员账号、初始密码保存在 root 专属文件：
 
 ```bash
-cat /mnt/youlin-data/runtime/管理员登录信息.txt
+cat /opt/dnsdoh/runtime/管理员登录信息.txt
 ```
 
-所有项目数据、数据库、缓存、证书、日志和下载均放在 `/mnt/youlin-data`。系统目录只安装发行版软件包及服务 / Nginx 注册文件。已有不属于本安装器的主控、数据库端口或同名虚拟主机不会被覆盖。相同域名重试保留已有密码和数据库。
+默认将程序、数据库、缓存、证书、日志和下载放在 `/opt/dnsdoh`，无需挂载专用硬盘。可使用 `--data-dir /srv/dnsdoh` 或 `DNSDOH_DATA_ROOT` 指定其他目录；管理员凭据位于所选目录的 `runtime/管理员登录信息.txt`。系统目录只安装发行版软件包及服务 / Nginx 注册文件。已有不属于本安装器的主控、数据库端口或同名虚拟主机不会被覆盖。相同域名、相同安装目录重试保留已有密码和数据库。旧版安装请显式指定原目录，本次更新不自动迁移数据。
 
 **填写域名无法代替 DNS 供应商授权。** 一键脚本完成管理主控安装；首次登录后，在强制向导中填写自己的 DNS API 凭据、选择主域名和 DoH 标签。随后系统自动申请统一 DoH 证书、配置解析并接入节点。项目不附带任何供应商令牌或预置管理员密码。
 
@@ -82,11 +82,11 @@ https://doh.example.com/dns-query/<43字符随机令牌>
 
 ## 开发、部署与测试
 
-源码编译需要 Rust stable、Node.js 20.19+、MariaDB。依赖锁定在 Cargo.lock / package-lock.json，缓存默认写入数据盘。
+源码编译需要 Rust stable、Node.js 20.19+、MariaDB。依赖锁定在 Cargo.lock / package-lock.json，构建缓存默认写入仓库下的 `.build/`，可通过 `DNSDOH_BUILD_ROOT` 指定其他目录。
 
 ```bash
 ./scripts/build.sh
-# 准备数据盘中的 Rust toolchain 与系统 musl-tools 后构建通用静态 agent
+# 准备 Rust toolchain 与系统 musl-tools 后构建通用静态 agent
 ./scripts/build-agent.sh
 ```
 

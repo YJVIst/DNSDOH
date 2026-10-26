@@ -12,11 +12,11 @@ import time
 
 p = argparse.ArgumentParser()
 p.add_argument('action', choices=['start', 'stop', 'restart', 'status'])
-p.add_argument('--runtime', type=Path, default=Path('/mnt/youlin-data/runtime'))
+p.add_argument('--runtime', type=Path, default=Path(os.environ.get('DNSDOH_DATA_ROOT', '/opt/dnsdoh')) / 'runtime')
 p.add_argument('--binary', type=Path, default=Path(__file__).resolve().parents[1] / 'target/release/dnsdoh')
 a = p.parse_args()
 names = ['controller', 'node-a', 'node-b']
-if a.runtime.resolve() == Path('/mnt/youlin-data/runtime') and Path('/etc/systemd/system/dnsdoh@.service').exists():
+if a.runtime.resolve() == (Path(os.environ.get('DNSDOH_DATA_ROOT', '/opt/dnsdoh')) / 'runtime') and Path('/etc/systemd/system/dnsdoh@.service').exists():
     units = ['dnsdoh@' + name + '.service' for name in names]
     if a.action != 'status':
         subprocess.run(['systemctl', a.action, *units], check=True)
